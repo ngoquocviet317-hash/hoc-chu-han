@@ -12,7 +12,7 @@ from st_img_pastebutton import paste
 
 st.set_page_config(page_title="Sổ Tay Từ Vựng & Chiết Tự Hán Ngữ", page_icon="🈶", layout="wide")
 
-DATA_FILE = "hanzi_vault.csv"
+DATA_FILE = "hanzi_vault_v2.csv"
 
 def compress_and_resize_image(input_img: Image.Image, max_dim: int = 1000) -> bytes:
     if input_img.mode in ("RGBA", "P"):
