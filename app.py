@@ -271,4 +271,28 @@ with tab_vault:
                                 c_comps = c.get("components", [])
                                 c_mnem = c.get("mnemonics", "")
                                 st.markdown(f"**Chữ `{c_char}`** (*{c_py}* - *{c_hv}*): {c_mean}")
-                                for comp in c
+                                for comp in c_comps:
+                                    if isinstance(comp, dict):
+                                        st.markdown(f"- **{comp.get('symbol', '')}** ({comp.get('name', '')}): {comp.get('role', '')}")
+                                    else:
+                                        st.markdown(f"- {comp}")
+                                st.caption(f"💡 Mẹo nhớ: {c_mnem}")
+                                st.write("---")
+                    st.caption(f"Cập nhật lúc: {row.get('created_at', 'Chưa rõ')}")
+                with col_del:
+                    st.write("")
+                    st.write("")
+                    if st.button("Xóa từ này", key=f"del_{w_text}_{idx}"):
+                        delete_single_word(w_text)
+                        st.rerun()
+                st.divider()
+
+        csv_data = df_saved.to_csv(index=False).encode('utf-8-sig')
+        st.download_button(
+            label="📥 Tải toàn bộ sổ tay về máy (.CSV mở Excel)",
+            data=csv_data,
+            file_name="so_tay_tu_vung_han_ngu.csv",
+            mime="text/csv"
+        )
+    else:
+        st.write("Chưa có từ vựng nào được lưu.")
