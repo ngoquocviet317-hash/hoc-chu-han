@@ -10,12 +10,12 @@ from google import genai
 from google.genai import types
 from st_img_pastebutton import paste
 
-st.set_page_config(page_title="Sổ Tay Hán Tự", page_icon="🈶", layout="wide")
+st.set_page_config(page_title="Sổ Tay Hán Tự & Chiết Tự", page_icon="🈶", layout="wide")
 
 DATA_FILE = "hanzi_vault.csv"
 
 def compress_and_resize_image(input_img: Image.Image, max_dim: int = 1000) -> bytes:
-    """Resize và nén ảnh thành chuỗi byte JPEG nhẹ để truyền siêu tốc."""
+    """Tự động resize và nén ảnh thành chuỗi byte JPEG nhẹ để truyền siêu tốc."""
     if input_img.mode in ("RGBA", "P"):
         input_img = input_img.convert("RGB")
     width, height = input_img.size
@@ -47,7 +47,20 @@ def save_new_words(new_entries: list[dict]):
         char = item.get("character", "").strip()
         if char and char not in existing_chars:
             comps = item.get("components", [])
-            comp_str = ", ".join(comps) if isinstance(comps, list) else str(comps)
+            if isinstance(comps, list):
+                comp_parts = []
+                for c in comps:
+                    if isinstance(c, dict):
+                        sym = c.get("symbol", "")
+                        name = c.get("name", "")
+                        role = c.get("role", "")
+                        comp_parts.append(f"{sym} - {name} ({role})")
+                    else:
+                        comp_parts.append(str(c))
+                comp_str = " | ".join(comp_parts)
+            else:
+                comp_str = str(comps)
+
             records_to_add.append({
                 "character": char,
                 "pinyin": item.get("pinyin", ""),
@@ -65,7 +78,7 @@ def save_new_words(new_entries: list[dict]):
         return len(records_to_add)
     return 0
 
-tab_scan, tab_vault = st.tabs(["⚡ Quét & Tách Chữ Nhanh", "📚 Sổ Tay Đã Lưu"])
+tab_scan, tab_vault = st.tabs(["⚡ Quét & Chiết Tự", "📚 Sổ Tay Đã Lưu"])
 
 with tab_scan:
     st.sidebar.header("Cài Đặt")
@@ -74,7 +87,7 @@ with tab_scan:
     st.subheader("📥 Nhập ảnh chữ Hán từ Snipping Tool")
     
     paste_data = paste(
-        label="📋 BẤM VÀO ĐÂY ĐỂ DÁN ẢNH TỪ CLIPBOARD",
+        label="📋 BẤM VÀO ĐÂY ĐỂ DÁN ẢNH TỪ CLIPBOARD (Snipping Tool)",
         key="image_clipboard"
     )
 
@@ -87,8 +100,8 @@ with tab_scan:
         except Exception as err:
             st.error(f"Lỗi đọc ảnh từ clipboard: {err}")
 
-    with st.expander("Hoặc tải file ảnh từ máy"):
-        uploaded_file = st.file_uploader("Chọn ảnh:", type=["jpg", "jpeg", "png", "webp"])
+    with st.expander("Hoặc tải file ảnh từ máy tính (nếu cần)"):
+        uploaded_file = st.file_uploader("Chọn tệp ảnh:", type=["jpg", "jpeg", "png", "webp"])
         if uploaded_file is not None:
             raw_img = Image.open(uploaded_file)
 
@@ -99,19 +112,19 @@ with tab_scan:
         with col_img:
             st.image(raw_img, caption="Ảnh chữ Hán cần phân tích", use_container_width=True)
 
-        if st.button("🚀 Bắt Đầu Phân Tích", type="primary"):
-            with st.spinner("AI đang nhận diện siêu tốc..."):
+        if st.button("🚀 Bắt Đầu Phân Tích Chi Tiết", type="primary"):
+            with st.spinner("AI đang nhận diện và bóc tách bộ thủ siêu tốc..."):
                 try:
                     client = genai.Client(api_key=api_key)
                     
                     prompt = """
                     Bạn là một chuyên gia chiết tự và ngữ nghĩa học chữ Hán.
-                    Hãy quét toàn bộ chữ Hán có trong ảnh và bóc tách cấu tạo cực kỳ chi tiết.
-                    Trả về DUY NHẤT một mảng JSON (không có markdown thừa) theo định dạng:
+                    Hãy quét toàn bộ chữ Hán có trong bức ảnh này và bóc tách cấu tạo cực kỳ chi tiết.
+                    Trả về DUY NHẤT một mảng JSON (không bọc mã markdown thừa) theo cấu trúc sau:
                     [
                       {
                         "character": "chữ Hán cần phân tích (ví dụ: 汉)",
-                        "pinyin": "pinyin kèm thanh điệu (ví dụ: hàn)",
+                        "pinyin": "phiên âm pinyin kèm thanh điệu (ví dụ: hàn)",
                         "sino_vietnamese": "âm Hán Việt (ví dụ: Hán)",
                         "meaning": "nghĩa cơ bản của chữ",
                         "components": [
@@ -123,10 +136,10 @@ with tab_scan:
                           {
                             "symbol": "又",
                             "name": "Bộ Hựu",
-                            "role": "Bàn tay phải, động tác lặp lại"
+                            "role": "Bàn tay phải, động tác lặp đi lặp lại"
                           }
                         ],
-                        "mnemonics": "Mẹo kể chuyện ngắn gọn liên kết trực tiếp ý nghĩa của các bộ thủ ở trên với nghĩa tổng thể của chữ"
+                        "mnemonics": "Mẹo kể chuyện ngắn gọn, sinh động liên kết trực tiếp ý nghĩa của các bộ thủ ở trên với nghĩa tổng thể của chữ để người học nhớ sâu"
                       }
                     ]
                     """
@@ -184,7 +197,7 @@ with tab_scan:
                 st.subheader(f"⚡ Đã quét xong: {len(items)} chữ")
                 if st.button("💾 Lưu tất cả vào sổ tay", type="secondary"):
                     added = save_new_words(items)
-                    st.success(f"Đã lưu thành công {added} chữ mới!")
+                    st.success(f"Đã lưu thành công {added} chữ mới vào sổ tay!")
 
                 for item in items:
                     char = item.get("character", "")
@@ -192,12 +205,23 @@ with tab_scan:
                     hanviet = item.get("sino_vietnamese", "")
                     meaning = item.get("meaning", "")
                     comps = item.get("components", [])
-                    comp_text = ", ".join(comps) if isinstance(comps, list) else str(comps)
                     mnem = item.get("mnemonics", "")
                     
-                    with st.expander(f"**{char}** [{pinyin}] — {hanviet}: {meaning}", expanded=True):
-                        st.markdown(f"**Bộ thủ:** {comp_text}")
-                        st.info(f"💡 **Mẹo nhớ:** {mnem}")
+                    with st.expander(f"🈶 **{char}** `/{pinyin}/` — **{hanviet}**: {meaning}", expanded=True):
+                        st.markdown("##### 🧩 Thành phần & Bộ thủ cấu tạo:")
+                        if isinstance(comps, list):
+                            for c in comps:
+                                if isinstance(c, dict):
+                                    sym = c.get("symbol", "")
+                                    cname = c.get("name", "")
+                                    crole = c.get("role", "")
+                                    st.markdown(f"- **{sym}** ({cname}): *{crole}*")
+                                else:
+                                    st.markdown(f"- {c}")
+                        else:
+                            st.markdown(f"- {comps}")
+                            
+                        st.info(f"💡 **Mẹo ghi nhớ (Mnemonics):**\n\n{mnem}")
 
     elif not api_key:
         st.info("Vui lòng dán API Key vào thanh bên trái để sử dụng.")
@@ -228,7 +252,7 @@ with tab_vault:
 
         csv_data = df_saved.to_csv(index=False).encode('utf-8-sig')
         st.download_button(
-            label="Tải file CSV sổ tay về máy",
+            label="📥 Tải file CSV sổ tay về máy",
             data=csv_data,
             file_name="so_tay_chu_han.csv",
             mime="text/csv"
