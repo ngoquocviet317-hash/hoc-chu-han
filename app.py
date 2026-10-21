@@ -28,19 +28,19 @@ def compress_and_resize_image(input_img: Image.Image, max_dim: int = 1000) -> by
     return buffer.getvalue()
 
 def load_data():
-    columns = ["word", "word_pinyin", "word_sino_vietnamese", "word_meaning", "characters_detail_json", "created_at"]
+    cols = ["word", "word_pinyin", "word_sino_vietnamese", "word_meaning", "characters_detail_json", "created_at"]
     if os.path.exists(DATA_FILE):
         try:
             df = pd.read_csv(DATA_FILE)
             if "character" in df.columns and "word" not in df.columns:
                 df["word"] = df["character"]
-            for col in columns:
-                if col not in df.columns:
-                    df[col] = ""
-            return df[columns]
+            for c in cols:
+                if c not in df.columns:
+                    df[c] = ""
+            return df[cols]
         except Exception:
             pass
-    return pd.DataFrame(columns=columns)
+    return pd.DataFrame(columns=cols)
 
 def save_or_update_words(new_entries: list):
     df = load_data()
@@ -143,22 +143,21 @@ with tab_scan:
                             "char_hanviet": "Học",
                             "char_meaning": "học tập, bắt chước",
                             "components": [
-                              {"symbol": "⺍", "name": "Bộ Hào biến thể (3 nét phẩy chấm)", "role": "Tia sáng tri thức, bắt chước"},
+                              {"symbol": "⺍", "name": "Bộ Hào biến thể", "role": "Tia sáng tri thức, bắt chước"},
                               {"symbol": "冖", "name": "Bộ Mịch", "role": "Mái che, lớp phủ"},
                               {"symbol": "子", "name": "Bộ Tử", "role": "Đứa trẻ, con cái"}
                             ],
-                            "mnemonics": "Đứa trẻ (子) ngồi dưới mái che (冖) tiếp thu những tia sáng tri thức (⺍) chính là việc HỌC (学)."
+                            "mnemonics": "Đứa trẻ ngồi dưới mái che tiếp thu tri thức chính là việc Học."
                           },
                           {
                             "char": "生",
                             "char_pinyin": "shēng",
                             "char_hanviet": "Sinh",
-                            "char_meaning": "sinh ra, mầm sống, cuộc sống",
+                            "char_meaning": "sinh ra, mầm sống",
                             "components": [
-                              {"symbol": "生", "name": "Bộ Sinh", "role": "Chính nó là một bộ thủ độc lập"},
-                              {"symbol": "屮", "name": "Bộ Triệt", "role": "Mầm cây cỏ mới nhú đâm lên mặt đất"}
+                              {"symbol": "生", "name": "Bộ Sinh", "role": "Mầm sống đâm chồi"}
                             ],
-                            "mnemonics": "Mầm cây (屮) đâm chồi nhú lên khỏi mặt đất (一) biểu thị sự SINH sôi, nảy nở của mầm sống."
+                            "mnemonics": "Mầm cây đâm chồi nhú lên mặt đất là sự Sinh sôi."
                           }
                         ]
                       }
@@ -245,7 +244,6 @@ with tab_scan:
                             c_mnem = c.get("mnemonics", "")
 
                             st.markdown(f"### 🈴 Chữ **`{c_char}`** (Pinyin: *{c_py}* | Hán Việt: *{c_hv}*): {c_mean}")
-                            
                             st.markdown("**🧩 Bộ thủ cấu tạo:**")
                             if isinstance(c_comps, list) and len(c_comps) > 0:
                                 for comp in c_comps:
@@ -283,7 +281,6 @@ with tab_vault:
                 st.success("Đã xóa sạch sổ tay!")
                 st.rerun()
 
-        # Bộ lọc tìm kiếm an toàn tuyệt đối, tránh lỗi lồng ngoặc vuông
         if search_kw:
             matched_indices = []
             for idx, row in df_saved.iterrows():
@@ -303,11 +300,12 @@ with tab_vault:
         st.caption(f"Tìm thấy {len(df_display)} từ phù hợp:")
 
         for idx, row in df_display.iterrows():
-            w_text = row['word']
-            w_py = row.get('word_pinyin', '')
-            w_hv = row.get('word_sino_vietnamese', '')
-            w_mean = row.get('word_meaning', '')
-            details_raw = row.get('characters_detail_json', '[]')
+            w_text = row.get("word", "")
+            w_py = row.get("word_pinyin", "")
+            w_hv = row.get("word_sino_vietnamese", "")
+            w_mean = row.get("word_meaning", "")
+            save_time = str(row.get("created_at", "Chưa rõ"))
+            details_raw = row.get("characters_detail_json", "[]")
             try:
                 char_list = json.loads(details_raw)
             except Exception:
@@ -327,7 +325,6 @@ with tab_vault:
                                 c_mean = c.get("char_meaning", "")
                                 c_comps = c.get("components", [])
                                 c_mnem = c.get("mnemonics", "")
-                                
                                 st.markdown(f"**Chữ `{c_char}`** (*{c_py}* - *{c_hv}*): {c_mean}")
                                 for comp in c_comps:
                                     if isinstance(comp, dict):
@@ -337,4 +334,21 @@ with tab_vault:
                                 if c_mnem:
                                     st.caption(f"💡 Mẹo nhớ: {c_mnem}")
                                 st.write("---")
-                    st.caption(f"Cập nhật lúc: {row.get('created_
+                    st.caption("Cập nhật lúc: " + save_time)
+                with col_del:
+                    st.write("")
+                    st.write("")
+                    if st.button("Xóa từ này", key=f"del_{w_text}_{idx}"):
+                        delete_single_word(w_text)
+                        st.rerun()
+                st.divider()
+
+        csv_data = df_saved.to_csv(index=False).encode('utf-8-sig')
+        st.download_button(
+            label="📥 Tải toàn bộ sổ tay về máy (.CSV mở Excel)",
+            data=csv_data,
+            file_name="so_tay_tu_vung_han_ngu.csv",
+            mime="text/csv"
+        )
+    else:
+        st.write("Chưa có từ vựng nào được lưu.")
