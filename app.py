@@ -105,16 +105,28 @@ with tab_scan:
                     client = genai.Client(api_key=api_key)
                     
                     prompt = """
-                    Quét toàn bộ chữ Hán có trong bức ảnh.
-                    Hãy trả về DUY NHẤT một mảng JSON (không bọc mã markdown thừa) theo cấu trúc sau:
+                    Bạn là một chuyên gia chiết tự và ngữ nghĩa học chữ Hán.
+                    Hãy quét toàn bộ chữ Hán có trong ảnh và bóc tách cấu tạo cực kỳ chi tiết.
+                    Trả về DUY NHẤT một mảng JSON (không có markdown thừa) theo định dạng:
                     [
                       {
-                        "character": "chữ Hán",
-                        "pinyin": "phiên âm pinyin",
-                        "sino_vietnamese": "âm Hán Việt",
-                        "meaning": "nghĩa tiếng Việt ngắn gọn",
-                        "components": ["bộ thủ 1", "bộ thủ 2"],
-                        "mnemonics": "mẹo nhớ ngắn gọn liên kết các bộ với nghĩa"
+                        "character": "chữ Hán cần phân tích (ví dụ: 汉)",
+                        "pinyin": "pinyin kèm thanh điệu (ví dụ: hàn)",
+                        "sino_vietnamese": "âm Hán Việt (ví dụ: Hán)",
+                        "meaning": "nghĩa cơ bản của chữ",
+                        "components": [
+                          {
+                            "symbol": "氵",
+                            "name": "Bộ Thủy (Ba chấm thủy)",
+                            "role": "Biểu thị nước, sông suối (nguyên gốc chỉ sông Hán Thủy)"
+                          },
+                          {
+                            "symbol": "又",
+                            "name": "Bộ Hựu",
+                            "role": "Bàn tay phải, động tác lặp lại"
+                          }
+                        ],
+                        "mnemonics": "Mẹo kể chuyện ngắn gọn liên kết trực tiếp ý nghĩa của các bộ thủ ở trên với nghĩa tổng thể của chữ"
                       }
                     ]
                     """
