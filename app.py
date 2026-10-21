@@ -179,12 +179,12 @@ with tab_vault:
 
     if not df_saved.empty:
         search_kw = st.text_input("🔍 Tìm kiếm từ (chữ Hán, Pinyin, Hán Việt):").strip().lower()
-        if search_kw:
+       if search_kw:
             df_display = df_saved[
-                df_saved["character"].str.contains(search_kw, na=False) |
-                df_saved["pinyin"].str.lower().contains(search_kw, na=False) |
-                df_saved["sino_vietnamese"].str.lower().contains(search_kw, na=False) |
-                df_saved["meaning"].str.lower().contains(search_kw, na=False)
+                df_saved["character"].astype(str).str.contains(search_kw, case=False, na=False) |
+                df_saved["pinyin"].astype(str).str.contains(search_kw, case=False, na=False) |
+                df_saved["sino_vietnamese"].astype(str).str.contains(search_kw, case=False, na=False) |
+                df_saved["meaning"].astype(str).str.contains(search_kw, case=False, na=False)
             ]
         else:
             df_display = df_saved
