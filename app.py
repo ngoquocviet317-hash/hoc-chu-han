@@ -119,19 +119,37 @@ with tab_scan:
                     ]
                     """
                     
-                    # Truyền byte trực tiếp để tránh timeout
-                    response = client.models.generate_content(
-                        model="gemini-3.8-flash",
-                        contents=[
-                            types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"),
-                            prompt
-                        ],
-                        config=types.GenerateContentConfig(
-                            response_mime_type="application/json",
-                            temperature=0.1
-                        )
-                    )
+                    models_to_try = [
+                        "gemini-2.0-flash",
+                        "gemini-2.5-flash",
+                        "gemini-1.5-pro",
+                        "gemini-1.5-flash"
+                    ]
                     
+                    response = None
+                    last_err = None
+                    for m in models_to_try:
+                        try:
+                            response = client.models.generate_content(
+                                model=m,
+                                contents=[
+                                    types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"),
+                                    prompt
+                                ],
+                                config=types.GenerateContentConfig(
+                                    response_mime_type="application/json",
+                                    temperature=0.1
+                                )
+                            )
+                            if response and response.text:
+                                break
+                        except Exception as e:
+                            last_err = e
+                            continue
+                    
+                    if not response or not response.text:
+                        raise Exception(f"Không thể kết nối máy chủ AI: {last_err}")
+
                     clean_text = response.text.strip()
                     if clean_text.startswith("```json"):
                         clean_text = clean_text[7:]
@@ -178,31 +196,4 @@ with tab_vault:
     st.subheader(f"Tổng số từ đang lưu: {len(df_saved)}")
 
     if not df_saved.empty:
-        search_kw = st.text_input("🔍 Tìm kiếm từ (chữ Hán, Pinyin, Hán Việt):").strip().lower()
-       if search_kw:
-            df_display = df_saved[
-                df_saved["character"].astype(str).str.contains(search_kw, case=False, na=False) |
-                df_saved["pinyin"].astype(str).str.contains(search_kw, case=False, na=False) |
-                df_saved["sino_vietnamese"].astype(str).str.contains(search_kw, case=False, na=False) |
-                df_saved["meaning"].astype(str).str.contains(search_kw, case=False, na=False)
-            ]
-        else:
-            df_display = df_saved
-
-        for _, row in df_display.iterrows():
-            st.markdown(f"### {row['character']} `/{row['pinyin']}/` — **{row['sino_vietnamese']}**")
-            st.markdown(f"- **Nghĩa:** {row['meaning']}")
-            st.markdown(f"- **Bộ thủ:** {row['components']}")
-            st.markdown(f"- **Mẹo nhớ:** {row['mnemonics']}")
-            st.caption(f"Lưu lúc: {row.get('created_at', 'Chưa rõ')}")
-            st.divider()
-
-        csv_data = df_saved.to_csv(index=False).encode('utf-8-sig')
-        st.download_button(
-            label="📥 Tải file CSV sổ tay về máy",
-            data=csv_data,
-            file_name="so_tay_chu_han.csv",
-            mime="text/csv"
-        )
-    else:
-        st.write("Chưa có từ nào được lưu.")
+        search_kw = st.text_input("
