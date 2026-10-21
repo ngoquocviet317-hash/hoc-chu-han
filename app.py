@@ -7,28 +7,25 @@ from datetime import datetime
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
+from streamlit_paste_button import paste_image_button
 
 st.set_page_config(page_title="Sổ Tay Hán Tự", page_icon="🈶", layout="wide")
 
 DATA_FILE = "hanzi_vault.csv"
 
 # --- HÀM NÉN ẢNH SIÊU TỐC ---
-def compress_and_resize_image(input_img: Image.Image, max_dim: int = 1400) -> Image.Image:
-    """Tự động resize và tối ưu ảnh để gửi API siêu nhanh mà vẫn rõ nét chữ Hán."""
-    # Chuyển về RGB nếu ảnh là RGBA (chụp màn hình/PNG trong suốt)
+def compress_and_resize_image(input_img: Image.Image, max_dim: int = 1200) -> Image.Image:
+    """Tự động resize và tối ưu ảnh để xử lý siêu nhanh mà vẫn giữ sắc nét chữ Hán."""
     if input_img.mode in ("RGBA", "P"):
         input_img = input_img.convert("RGB")
     
-    # Tính toán tỷ lệ co nhỏ nếu ảnh quá lớn
     width, height = input_img.size
     if max(width, height) > max_dim:
         scale = max_dim / float(max(width, height))
         new_width = int(width * scale)
         new_height = int(height * scale)
-        # Dùng kỹ thuật nội suy LANCZOS để giữ độ sắc cạnh của nét chữ
         input_img = input_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
     
-    # Nén JPEG chất lượng 80% (giảm 90% dung lượng mà mắt người và AI không thấy khác biệt)
     buffer = io.BytesIO()
     input_img.save(buffer, format="JPEG", quality=80, optimize=True)
     buffer.seek(0)
@@ -84,24 +81,41 @@ with tab_scan:
     st.sidebar.header("Cài Đặt")
     api_key = st.sidebar.text_input("Dán Gemini API Key vào đây:", type="password")
 
-    uploaded_file = st.file_uploader("Chọn hoặc thả ảnh chụp chữ Hán vào đây:", type=["jpg", "jpeg", "png", "webp"])
+    st.subheader("📥 Nhập ảnh chữ Hán (Dán trực tiếp không cần lưu)")
+    
+    col_btn, col_alt = st.columns([1, 1])
+    with col_btn:
+        st.markdown("**Cách 1: Dán nhanh từ bộ nhớ tạm**")
+        paste_result = paste_image_button(
+            label="📋 Bấm vào đây để DÁN ẢNH vừa chụp (Snipping Tool)",
+            background_color="#FF4B4B",
+            hover_background_color="#E03838",
+            key="paste_clipboard"
+        )
+    with col_alt:
+        st.markdown("**Cách 2: Kéo thả file nếu có sẵn**")
+        uploaded_file = st.file_uploader("Kéo thả file vào đây (tùy chọn):", type=["jpg", "jpeg", "png", "webp"])
 
-    if uploaded_file and api_key:
-        col_img, col_res = st.columns([1, 2])
+    raw_img = None
+    if paste_result.image_data is not None:
+        raw_img = paste_result.image_data
+    elif uploaded_file is not None:
         raw_img = Image.open(uploaded_file)
-        
-        # Tự động nén ảnh ngay lập tức
-        optimized_img = compress_and_resize_image(raw_img)
 
+    if raw_img and api_key:
+        # Nén ảnh ngay tại chỗ để đạt tốc độ cao nhất
+        img = compress_and_resize_image(raw_img)
+
+        col_img, col_res = st.columns([1, 2])
         with col_img:
-            st.image(optimized_img, caption="Ảnh đã tối ưu tốc độ", use_container_width=True)
+            st.image(img, caption="Ảnh đã nhận & tối ưu dung lượng", use_container_width=True)
 
-        if st.button("🚀 Bắt Đầu Phân Tích (Tối Ưu Tốc Độ)", type="primary"):
-            with st.spinner("AI đang nhận diện siêu tốc..."):
+        if st.button("🚀 Bắt Đầu Phân Tích Siêu Tốc", type="primary"):
+            with st.spinner("AI đang nhận diện và bóc tách bộ thủ..."):
                 try:
                     client = genai.Client(api_key=api_key)
                     prompt = """
-                    Quét toàn bộ chữ Hán trong ảnh:
+                    Quét toàn bộ chữ Hán có trong ảnh:
                     1. Nhận diện chuẩn xác từng chữ Hán.
                     2. Phân tích các bộ thủ tạo nên chữ.
                     3. Gợi ý mẹo nhớ ngắn gọn bằng tiếng Việt liên kết giữa bộ thủ và ý nghĩa.
@@ -109,11 +123,11 @@ with tab_scan:
                     """
                     response = client.models.generate_content(
                         model="gemini-1.5-flash",
-                        contents=[optimized_img, prompt],
+                        contents=[img, prompt],
                         config=types.GenerateContentConfig(
                             response_mime_type="application/json",
                             response_schema=OCRAnalysisResult,
-                            temperature=0.1 # Giảm xuống 0.1 để AI phản hồi nhanh nhất, không tốn thời gian "suy nghĩ vòng vèo"
+                            temperature=0.1
                         )
                     )
                     data = OCRAnalysisResult.model_validate_json(response.text)
@@ -124,7 +138,7 @@ with tab_scan:
         if "scanned_items" in st.session_state:
             items = st.session_state["scanned_items"]
             with col_res:
-                st.subheader(f"⚡ Đã quét xong: {len(items)} chữ")
+                st.subheader(f"⚡ Kết quả nhận diện: {len(items)} chữ")
                 if st.button("💾 Lưu tất cả vào sổ tay", type="secondary"):
                     added = save_new_words(items)
                     st.success(f"Đã lưu thành công {added} chữ mới!")
