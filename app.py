@@ -1,5 +1,6 @@
 import os
 import io
+import base64
 import streamlit as st
 import pandas as pd
 from PIL import Image
@@ -7,18 +8,16 @@ from datetime import datetime
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
-from streamlit_paste_button import paste_image_button
+from st_img_pastebutton import paste
 
 st.set_page_config(page_title="Sổ Tay Hán Tự", page_icon="🈶", layout="wide")
 
 DATA_FILE = "hanzi_vault.csv"
 
-# --- HÀM NÉN ẢNH SIÊU TỐC ---
+# --- HÀM TỰ ĐỘNG NÉN VÀ CO NHỎ ẢNH ĐỂ XỬ LÝ SIÊU TỐC ---
 def compress_and_resize_image(input_img: Image.Image, max_dim: int = 1200) -> Image.Image:
-    """Tự động resize và tối ưu ảnh để xử lý siêu nhanh mà vẫn giữ sắc nét chữ Hán."""
     if input_img.mode in ("RGBA", "P"):
         input_img = input_img.convert("RGB")
-    
     width, height = input_img.size
     if max(width, height) > max_dim:
         scale = max_dim / float(max(width, height))
@@ -81,37 +80,41 @@ with tab_scan:
     st.sidebar.header("Cài Đặt")
     api_key = st.sidebar.text_input("Dán Gemini API Key vào đây:", type="password")
 
-    st.subheader("📥 Nhập ảnh chữ Hán (Dán trực tiếp không cần lưu)")
-    
-    col_btn, col_alt = st.columns([1, 1])
-    with col_btn:
-        st.markdown("**Cách 1: Dán nhanh từ bộ nhớ tạm**")
-        paste_result = paste_image_button(
-            label="📋 Bấm vào đây để DÁN ẢNH vừa chụp (Snipping Tool)",
-            background_color="#FF4B4B",
-            hover_background_color="#E03838",
-            key="paste_clipboard"
-        )
-    with col_alt:
-        st.markdown("**Cách 2: Kéo thả file nếu có sẵn**")
-        uploaded_file = st.file_uploader("Kéo thả file vào đây (tùy chọn):", type=["jpg", "jpeg", "png", "webp"])
+    st.subheader("📥 Dán ảnh chữ Hán trực tiếp từ Snipping Tool")
+    st.caption("👉 Sau khi chụp bằng Snipping Tool (Win + Shift + S), bấm vào nút bên dưới:")
+
+    # Nút dán ảnh từ component st_img_pastebutton
+    paste_data = paste(
+        label="📋 BẤM VÀO ĐÂY ĐỂ DÁN ẢNH TỪ CLIPBOARD",
+        key="image_clipboard"
+    )
 
     raw_img = None
-    if paste_result.image_data is not None:
-        raw_img = paste_result.image_data
-    elif uploaded_file is not None:
-        raw_img = Image.open(uploaded_file)
+    if paste_data is not None:
+        try:
+            # Giải mã dữ liệu ảnh gửi trực tiếp từ clipboard
+            header, encoded = paste_data.split(",", 1)
+            image_bytes = base64.b64decode(encoded)
+            raw_img = Image.open(io.BytesIO(image_bytes))
+        except Exception as err:
+            st.error(f"Lỗi đọc ảnh từ clipboard: {err}")
+
+    # Ô dự phòng nếu muốn kéo thả file
+    with st.expander("Hoặc tải file ảnh từ máy (nếu cần)"):
+        uploaded_file = st.file_uploader("Chọn ảnh:", type=["jpg", "jpeg", "png", "webp"])
+        if uploaded_file is not None:
+            raw_img = Image.open(uploaded_file)
 
     if raw_img and api_key:
-        # Nén ảnh ngay tại chỗ để đạt tốc độ cao nhất
+        # Nén ảnh tức thì để gửi AI phản hồi trong 1-2 giây
         img = compress_and_resize_image(raw_img)
 
         col_img, col_res = st.columns([1, 2])
         with col_img:
-            st.image(img, caption="Ảnh đã nhận & tối ưu dung lượng", use_container_width=True)
+            st.image(img, caption="Ảnh đã nhận diện thành công", use_container_width=True)
 
-        if st.button("🚀 Bắt Đầu Phân Tích Siêu Tốc", type="primary"):
-            with st.spinner("AI đang nhận diện và bóc tách bộ thủ..."):
+        if st.button("🚀 Bắt Đầu Phân Tích", type="primary"):
+            with st.spinner("AI đang nhận diện và bóc tách cấu tạo..."):
                 try:
                     client = genai.Client(api_key=api_key)
                     prompt = """
@@ -138,7 +141,7 @@ with tab_scan:
         if "scanned_items" in st.session_state:
             items = st.session_state["scanned_items"]
             with col_res:
-                st.subheader(f"⚡ Kết quả nhận diện: {len(items)} chữ")
+                st.subheader(f"⚡ Đã quét xong: {len(items)} chữ")
                 if st.button("💾 Lưu tất cả vào sổ tay", type="secondary"):
                     added = save_new_words(items)
                     st.success(f"Đã lưu thành công {added} chữ mới!")
@@ -148,7 +151,7 @@ with tab_scan:
                         st.markdown(f"**Bộ thủ:** {', '.join(item['components'])}")
                         st.info(f"💡 **Mẹo nhớ:** {item['mnemonics']}")
     elif not api_key:
-        st.info("Vui lòng dán API Key vào cột bên trái để bắt đầu.")
+        st.info("Vui lòng dán API Key vào thanh bên trái để sử dụng.")
 
 with tab_vault:
     df_saved = load_data()
