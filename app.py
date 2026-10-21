@@ -196,4 +196,31 @@ with tab_vault:
     st.subheader(f"Tổng số từ đang lưu: {len(df_saved)}")
 
     if not df_saved.empty:
-        search_kw = st.text_input("
+        search_kw = st.text_input("Tìm kiếm từ (chữ Hán, Pinyin, Hán Việt):").strip().lower()
+        if search_kw:
+            df_display = df_saved[
+                df_saved["character"].astype(str).str.contains(search_kw, case=False, na=False) |
+                df_saved["pinyin"].astype(str).str.contains(search_kw, case=False, na=False) |
+                df_saved["sino_vietnamese"].astype(str).str.contains(search_kw, case=False, na=False) |
+                df_saved["meaning"].astype(str).str.contains(search_kw, case=False, na=False)
+            ]
+        else:
+            df_display = df_saved
+
+        for _, row in df_display.iterrows():
+            st.markdown(f"### {row['character']} `/{row['pinyin']}/` — **{row['sino_vietnamese']}**")
+            st.markdown(f"- **Nghĩa:** {row['meaning']}")
+            st.markdown(f"- **Bộ thủ:** {row['components']}")
+            st.markdown(f"- **Mẹo nhớ:** {row['mnemonics']}")
+            st.caption(f"Lưu lúc: {row.get('created_at', 'Chưa rõ')}")
+            st.divider()
+
+        csv_data = df_saved.to_csv(index=False).encode('utf-8-sig')
+        st.download_button(
+            label="Tải file CSV sổ tay về máy",
+            data=csv_data,
+            file_name="so_tay_chu_han.csv",
+            mime="text/csv"
+        )
+    else:
+        st.write("Chưa có từ nào được lưu.")
