@@ -37,46 +37,71 @@ def load_data():
             pass
     return pd.DataFrame(columns=["character", "pinyin", "sino_vietnamese", "meaning", "components", "mnemonics", "created_at"])
 
-def save_new_words(new_entries: list[dict]):
+# --- HÀM LƯU TỪ VỰNG: GHI ĐÈ TỪ ĐÃ CÓ VÀ THÊM TỪ MỚI ---
+def save_or_update_words(new_entries: list[dict]):
     df = load_data()
-    existing_chars = set(df["character"].dropna().tolist())
-    records_to_add = []
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
     
+    # Chuyển DataFrame hiện tại thành dictionary để dễ tra cứu và ghi đè theo chữ Hán
+    records_dict = {}
+    if not df.empty:
+        for _, row in df.iterrows():
+            char = str(row["character"]).strip()
+            if char:
+                records_dict[char] = row.to_dict()
+
+    updated_count = 0
+    added_count = 0
+
     for item in new_entries:
         char = item.get("character", "").strip()
-        if char and char not in existing_chars:
-            comps = item.get("components", [])
-            if isinstance(comps, list):
-                comp_parts = []
-                for c in comps:
-                    if isinstance(c, dict):
-                        sym = c.get("symbol", "")
-                        name = c.get("name", "")
-                        role = c.get("role", "")
-                        comp_parts.append(f"{sym} - {name} ({role})")
-                    else:
-                        comp_parts.append(str(c))
-                comp_str = " | ".join(comp_parts)
-            else:
-                comp_str = str(comps)
+        if not char:
+            continue
 
-            records_to_add.append({
-                "character": char,
-                "pinyin": item.get("pinyin", ""),
-                "sino_vietnamese": item.get("sino_vietnamese", ""),
-                "meaning": item.get("meaning", ""),
-                "components": comp_str,
-                "mnemonics": item.get("mnemonics", ""),
-                "created_at": now_str
-            })
-            existing_chars.add(char)
+        comps = item.get("components", [])
+        if isinstance(comps, list):
+            comp_parts = []
+            for c in comps:
+                if isinstance(c, dict):
+                    sym = c.get("symbol", "")
+                    name = c.get("name", "")
+                    role = c.get("role", "")
+                    comp_parts.append(f"{sym} - {name} ({role})")
+                else:
+                    comp_parts.append(str(c))
+            comp_str = " | ".join(comp_parts)
+        else:
+            comp_str = str(comps)
 
-    if records_to_add:
-        updated_df = pd.concat([df, pd.DataFrame(records_to_add)], ignore_index=True)
-        updated_df.to_csv(DATA_FILE, index=False)
-        return len(records_to_add)
-    return 0
+        new_record = {
+            "character": char,
+            "pinyin": item.get("pinyin", ""),
+            "sino_vietnamese": item.get("sino_vietnamese", ""),
+            "meaning": item.get("meaning", ""),
+            "components": comp_str,
+            "mnemonics": item.get("mnemonics", ""),
+            "created_at": now_str
+        }
+
+        if char in records_dict:
+            updated_count += 1
+        else:
+            added_count += 1
+            
+        # Ghi đè hoặc thêm mới
+        records_dict[char] = new_record
+
+    # Lưu lại toàn bộ vào file CSV
+    new_df = pd.DataFrame(list(records_dict.values()))
+    new_df.to_csv(DATA_FILE, index=False)
+    return added_count, updated_count
+
+# Hàm xóa một từ cụ thể
+def delete_single_word(char_to_delete: str):
+    df = load_data()
+    if not df.empty:
+        df = df[df["character"] != char_to_delete]
+        df.to_csv(DATA_FILE, index=False)
 
 tab_scan, tab_vault = st.tabs(["⚡ Quét & Chiết Tự", "📚 Sổ Tay Đã Lưu"])
 
@@ -195,9 +220,16 @@ with tab_scan:
             items = st.session_state["scanned_items"]
             with col_res:
                 st.subheader(f"⚡ Đã quét xong: {len(items)} chữ")
-                if st.button("💾 Lưu tất cả vào sổ tay", type="secondary"):
-                    added = save_new_words(items)
-                    st.success(f"Đã lưu thành công {added} chữ mới vào sổ tay!")
+                
+                # Nút lưu với cơ chế Ghi Đè thông minh
+                if st.button("💾 Lưu vào sổ tay (Tự động ghi đè từ đã có)", type="secondary"):
+                    added, updated = save_or_update_words(items)
+                    msg = []
+                    if added > 0:
+                        msg.append(f"thêm mới {added} từ")
+                    if updated > 0:
+                        msg.append(f"ghi đè thành công {updated} từ cũ")
+                    st.success(f"Đã {' và '.join(msg)} vào sổ tay!")
 
                 for item in items:
                     char = item.get("character", "")
@@ -231,7 +263,19 @@ with tab_vault:
     st.subheader(f"Tổng số từ đang lưu: {len(df_saved)}")
 
     if not df_saved.empty:
-        search_kw = st.text_input("Tìm kiếm từ (chữ Hán, Pinyin, Hán Việt):").strip().lower()
+        col_search, col_clear = st.columns([3, 1])
+        with col_search:
+            search_kw = st.text_input("Tìm kiếm từ (chữ Hán, Pinyin, Hán Việt):").strip().lower()
+        with col_clear:
+            st.write("")
+            st.write("")
+            # Nút xóa trắng toàn bộ sổ tay nếu muốn làm lại từ đầu
+            if st.button("🗑️ Xóa toàn bộ sổ tay"):
+                if os.path.exists(DATA_FILE):
+                    os.remove(DATA_FILE)
+                st.success("Đã xóa sạch sổ tay!")
+                st.rerun()
+
         if search_kw:
             df_display = df_saved[
                 df_saved["character"].astype(str).str.contains(search_kw, case=False, na=False) |
@@ -242,13 +286,23 @@ with tab_vault:
         else:
             df_display = df_saved
 
-        for _, row in df_display.iterrows():
-            st.markdown(f"### {row['character']} `/{row['pinyin']}/` — **{row['sino_vietnamese']}**")
-            st.markdown(f"- **Nghĩa:** {row['meaning']}")
-            st.markdown(f"- **Bộ thủ:** {row['components']}")
-            st.markdown(f"- **Mẹo nhớ:** {row['mnemonics']}")
-            st.caption(f"Lưu lúc: {row.get('created_at', 'Chưa rõ')}")
-            st.divider()
+        for idx, row in df_display.iterrows():
+            char = row['character']
+            with st.container():
+                col_info, col_del = st.columns([5, 1])
+                with col_info:
+                    st.markdown(f"### {char} `/{row['pinyin']}/` — **{row['sino_vietnamese']}**")
+                    st.markdown(f"- **Nghĩa:** {row['meaning']}")
+                    st.markdown(f"- **Bộ thủ:** {row['components']}")
+                    st.markdown(f"- **Mẹo nhớ:** {row['mnemonics']}")
+                    st.caption(f"Cập nhật lúc: {row.get('created_at', 'Chưa rõ')}")
+                with col_del:
+                    st.write("")
+                    st.write("")
+                    if st.button("Xóa chữ này", key=f"del_{char}_{idx}"):
+                        delete_single_word(char)
+                        st.rerun()
+                st.divider()
 
         csv_data = df_saved.to_csv(index=False).encode('utf-8-sig')
         st.download_button(
