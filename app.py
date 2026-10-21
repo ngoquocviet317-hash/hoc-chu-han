@@ -61,23 +61,36 @@ with tab_scan:
     st.sidebar.header("Cài Đặt")
     api_key = st.sidebar.text_input("Dán Gemini API Key vào đây:", type="password")
 
-    uploaded_file = st.file_uploader("Tải lên ảnh chụp danh sách chữ Hán:", type=["jpg", "jpeg", "png"])
+    # Khu vực dán và tải ảnh đa năng
+    st.markdown("### 📥 Tải lên hoặc Dán ảnh trực tiếp")
+    st.caption("💡 **Mẹo:** Bạn có thể chụp màn hình (hoặc bấm chuột phải copy ảnh từ Facebook, Zalo, Web) rồi nhấp vào khung dưới đây và ấn **Ctrl + V** (hoặc **Cmd + V** trên Mac) để dán trực tiếp!")
+    
+    # Hỗ trợ kéo thả, chọn file và dán từ clipboard
+    uploaded_file = st.file_uploader(
+        "Nhấp vào đây rồi ấn Ctrl+V để DÁN ảnh, hoặc kéo thả tệp ảnh vào đây:", 
+        type=["jpg", "jpeg", "png"],
+        key="image_input"
+    )
 
     if uploaded_file and api_key:
         col_img, col_res = st.columns([1, 2])
-        img = Image.open(uploaded_file)
-        with col_img:
-            st.image(img, caption="Ảnh tải lên", use_container_width=True)
+        try:
+            img = Image.open(uploaded_file)
+            with col_img:
+                st.image(img, caption="Ảnh vừa dán/tải lên", use_container_width=True)
+        except Exception as e:
+            st.error(f"Không thể đọc được ảnh. Vui lòng thử chụp hoặc copy lại ảnh khác! Chi tiết: {e}")
+            img = None
 
-        if st.button("Bắt Đầu Phân Tích", type="primary"):
+        if img and st.button("🚀 Bắt Đầu Phân Tích", type="primary"):
             with st.spinner("AI đang quét chữ và bóc tách bộ thủ..."):
                 try:
                     client = genai.Client(api_key=api_key)
                     prompt = """
                     Quét toàn bộ chữ Hán có trong ảnh này:
-                    1. Nhận diện chính xác từng chữ.
+                    1. Nhận diện chính xác từng chữ Hán. Nếu có nhiều chữ, hãy bóc tách chi tiết từng chữ một.
                     2. Phân tích thành phần bộ thủ thực tế.
-                    3. Gợi ý mẹo nhớ (Mnemonics) ngắn gọn, kết nối bộ thủ với ý nghĩa chữ.
+                    3. Gợi ý mẹo nhớ (Mnemonics) ngắn gọn, sinh động bằng tiếng Việt kết nối bộ thủ với ý nghĩa chữ.
                     Trả về đúng định dạng schema được yêu cầu.
                     """
                     response = client.models.generate_content(
@@ -97,7 +110,7 @@ with tab_scan:
         if "scanned_items" in st.session_state:
             items = st.session_state["scanned_items"]
             with col_res:
-                st.subheader(f"Nhận diện được {len(items)} chữ")
+                st.subheader(f"🔍 Nhận diện được {len(items)} chữ")
                 if st.button("💾 Lưu tất cả vào sổ tay", type="secondary"):
                     added = save_new_words(items)
                     st.success(f"Đã lưu thành công {added} chữ mới vào sổ tay!")
