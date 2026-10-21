@@ -312,4 +312,70 @@ with tab_vault:
                 st.rerun()
 
         if search_kw:
-            # Tìm kiếm thông minh qua
+            df_display = df_saved[
+                df_saved["word"].astype(str).str.contains(search_kw, case=False, na=False) |
+                df_saved["word_meaning"].astype(str).str.contains(search_kw, case=False, na=False) |
+                df_saved["word_pinyin"].astype(str).str.contains(search_kw, case=False, na=False) |
+                df_saved["word_sino_vietnamese"].astype(str).str.contains(search_kw, case=False, na=False) |
+                df_saved["characters_detail_json"].astype(str).str.contains(search_kw, case=False, na=False)
+            ]
+        else:
+            df_display = df_saved
+
+        st.caption(f"Tìm thấy {len(df_display)} từ phù hợp:")
+
+        for idx, row in df_display.iterrows():
+            w_text = row['word']
+            w_py = row.get('word_pinyin', '')
+            w_hv = row.get('word_sino_vietnamese', '')
+            w_mean = row.get('word_meaning', '')
+            details_raw = row.get('characters_detail_json', '[]')
+            
+            try:
+                char_list = json.loads(details_raw)
+            except Exception:
+                char_list = []
+
+            with st.container():
+                col_info, col_del = st.columns([5, 1])
+                with col_info:
+                    st.markdown(f"### 🈶 {w_text} `[{w_py}]` — **{w_hv}**")
+                    st.markdown(f"🎯 **Nghĩa tiếng Việt:** **{w_mean}**")
+                    
+                    if char_list:
+                        with st.expander("👉 Bấm để xem chi tiết chiết tự từng chữ cấu thành:"):
+                            for c in char_list:
+                                c_char = c.get("char", "")
+                                c_py = c.get("char_pinyin", "")
+                                c_hv = c.get("char_hanviet", "")
+                                c_mean = c.get("char_meaning", "")
+                                c_comps = c.get("components", [])
+                                c_mnem = c.get("mnemonics", "")
+
+                                st.markdown(f"**Chữ `{c_char}`** (*{c_py}* - *{c_hv}*): {c_mean}")
+                                for comp in c_comps:
+                                    if isinstance(comp, dict):
+                                        st.markdown(f"- **{comp.get('symbol', '')}** ({comp.get('name', '')}): {comp.get('role', '')}")
+                                    else:
+                                        st.markdown(f"- {comp}")
+                                st.caption(f"💡 Mẹo nhớ: {c_mnem}")
+                                st.write("---")
+
+                    st.caption(f"Cập nhật lúc: {row.get('created_at', 'Chưa rõ')}")
+                with col_del:
+                    st.write("")
+                    st.write("")
+                    if st.button("Xóa từ này", key=f"del_{w_text}_{idx}"):
+                        delete_single_word(w_text)
+                        st.rerun()
+                st.divider()
+
+        csv_data = df_saved.to_csv(index=False).encode('utf-8-sig')
+        st.download_button(
+            label="📥 Tải toàn bộ sổ tay về máy (.CSV mở Excel)",
+            data=csv_data,
+            file_name="so_tay_tu_vung_han_ngu.csv",
+            mime="text/csv"
+        )
+    else:
+        st.write("Chưa có từ vựng nào được lưu.")
