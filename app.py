@@ -87,11 +87,11 @@ with tab_scan:
     api_key = st.sidebar.text_input("Dán Gemini API Key vào đây:", type="password")
 
     model_choice = st.sidebar.selectbox(
-        "Chọn phiên bản Gemini:",
+        "Chọn phiên bản phân tích:",
         options=[
-            "gemini-2.0-flash (Tốc độ siêu nhanh - Tương đương 3.8 Flash)",
-            "gemini-1.5-pro (Suy luận nâng cao - Tương đương 3.1 Pro)",
-            "gemini-1.5-flash-8b (Bản siêu nhẹ - Tương đương 3.5 Flash-Lite)"
+            "gemini-1.5-flash-latest (Bản tiêu chuẩn - Nhanh và ổn định)",
+            "gemini-1.5-pro-latest (Bản Pro - Phân tích chiết tự chuyên sâu)",
+            "gemini-2.0-flash-exp (Bản 2.0 thử nghiệm mới nhất)"
         ],
         index=0
     )
