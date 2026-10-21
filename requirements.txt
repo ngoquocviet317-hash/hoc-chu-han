@@ -2,4 +2,3 @@ streamlit
 google-genai
 pillow
 pydantic
-streamlit-paste-button
