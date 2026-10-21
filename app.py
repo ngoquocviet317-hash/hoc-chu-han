@@ -122,7 +122,6 @@ with tab_scan:
                 try:
                     client = genai.Client(api_key=api_key)
                     
-                    # Prompt chi tiết yêu cầu bóc tách bộ thủ và mẹo nhớ cho từng chữ cấu thành
                     prompt_text = """
                     Bạn là một chuyên gia Hán ngữ và chiết tự chữ Hán.
                     Hãy nhận diện toàn bộ từ vựng (từ đơn hoặc từ ghép nhiều chữ Hán) có trong ảnh.
@@ -284,10 +283,58 @@ with tab_vault:
                 st.success("Đã xóa sạch sổ tay!")
                 st.rerun()
 
+        # Bộ lọc tìm kiếm an toàn tuyệt đối, tránh lỗi lồng ngoặc vuông
         if search_kw:
-            df_display = df_saved[
-                df_saved["word"].astype(str).str.contains(search_kw, case=False, na=False) |
-                df_saved["word_meaning"].astype(str).str.contains(search_kw, case=False, na=False) |
-                df_saved["word_pinyin"].astype(str).str.contains(search_kw, case=False, na=False) |
-                df_saved["word_sino_vietnamese"].astype(str).str.contains(search_kw, case=False, na=False) |
-                df_saved["characters_detail_json"].astype(str).str.contains(search_kw, case=False, na=False)
+            matched_indices = []
+            for idx, row in df_saved.iterrows():
+                full_search_text = (
+                    str(row.get("word", "")) + " " +
+                    str(row.get("word_meaning", "")) + " " +
+                    str(row.get("word_pinyin", "")) + " " +
+                    str(row.get("word_sino_vietnamese", "")) + " " +
+                    str(row.get("characters_detail_json", ""))
+                ).lower()
+                if search_kw in full_search_text:
+                    matched_indices.append(idx)
+            df_display = df_saved.loc[matched_indices]
+        else:
+            df_display = df_saved
+
+        st.caption(f"Tìm thấy {len(df_display)} từ phù hợp:")
+
+        for idx, row in df_display.iterrows():
+            w_text = row['word']
+            w_py = row.get('word_pinyin', '')
+            w_hv = row.get('word_sino_vietnamese', '')
+            w_mean = row.get('word_meaning', '')
+            details_raw = row.get('characters_detail_json', '[]')
+            try:
+                char_list = json.loads(details_raw)
+            except Exception:
+                char_list = []
+
+            with st.container():
+                col_info, col_del = st.columns([5, 1])
+                with col_info:
+                    st.markdown(f"### 🈶 {w_text} `[{w_py}]` — **{w_hv}**")
+                    st.markdown(f"🎯 **Nghĩa tiếng Việt:** **{w_mean}**")
+                    if char_list:
+                        with st.expander("👉 Bấm để xem chi tiết chiết tự từng chữ cấu thành:"):
+                            for c in char_list:
+                                c_char = c.get("char", "")
+                                c_py = c.get("char_pinyin", "")
+                                c_hv = c.get("char_hanviet", "")
+                                c_mean = c.get("char_meaning", "")
+                                c_comps = c.get("components", [])
+                                c_mnem = c.get("mnemonics", "")
+                                
+                                st.markdown(f"**Chữ `{c_char}`** (*{c_py}* - *{c_hv}*): {c_mean}")
+                                for comp in c_comps:
+                                    if isinstance(comp, dict):
+                                        st.markdown(f"- **{comp.get('symbol', '')}** ({comp.get('name', '')}): {comp.get('role', '')}")
+                                    else:
+                                        st.markdown(f"- {comp}")
+                                if c_mnem:
+                                    st.caption(f"💡 Mẹo nhớ: {c_mnem}")
+                                st.write("---")
+                    st.caption(f"Cập nhật lúc: {row.get('created_
