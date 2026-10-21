@@ -89,9 +89,9 @@ with tab_scan:
     model_choice = st.sidebar.selectbox(
         "Chọn phiên bản Gemini:",
         options=[
-            "gemini-3.5 flash-lite (Siêu tốc - Khuyên dùng)",
-            "gemini-3.1 pro (Bản Pro - Chiết tự sâu & chữ khó)",
-            "gemini-3.8 flash (Bản Flash chuẩn)"
+            "gemini-2.0-flash (Tốc độ siêu nhanh - Tương đương 3.8 Flash)",
+            "gemini-1.5-pro (Suy luận nâng cao - Tương đương 3.1 Pro)",
+            "gemini-1.5-flash-8b (Bản siêu nhẹ - Tương đương 3.5 Flash-Lite)"
         ],
         index=0
     )
