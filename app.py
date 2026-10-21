@@ -32,7 +32,6 @@ def load_data():
     if os.path.exists(DATA_FILE):
         try:
             df = pd.read_csv(DATA_FILE)
-            # Tự động đồng bộ nếu là file từ các phiên bản cũ
             if "character" in df.columns and "word" not in df.columns:
                 df["word"] = df["character"]
             for col in columns:
@@ -119,22 +118,54 @@ with tab_scan:
             st.image(raw_img, caption="Ảnh quét từ vựng", use_container_width=True)
 
         if st.button("🚀 Bắt Đầu Phân Tích", type="primary"):
-            with st.spinner("AI đang nhận diện nguyên từ và chiết tự từng chữ..."):
+            with st.spinner("AI đang nhận diện nguyên từ và chiết tự từng bộ thủ..."):
                 try:
                     client = genai.Client(api_key=api_key)
-                    prompt_text = (
-                        "Bạn là chuyên gia Hán ngữ và chiết tự chữ Hán. "
-                        "Hãy quét toàn bộ từ vựng (từ đơn hoặc từ ghép nhiều chữ Hán) có trong bức ảnh. "
-                        "Ví dụ nếu có từ '不客气', hãy nhận diện nguyên từ trước rồi bóc tách từng chữ cấu thành. "
-                        "Trả về duy nhất mảng JSON không bọc markdown theo cấu trúc: "
-                        "[{\"word\": \"từ gốc\", \"word_pinyin\": \"pinyin\", \"word_sino_vietnamese\": \"Hán Việt\", "
-                        "\"word_meaning\": \"nghĩa tiếng Việt đầy đủ\", \"characters\": [{\"char\": \"chữ\", "
-                        "\"char_pinyin\": \"pinyin\", \"char_hanviet\": \"Hán Việt\", \"char_meaning\": \"nghĩa\", "
-                        "\"components\": [{\"symbol\": \"bộ\", \"name\": \"tên bộ\", \"role\": \"ý nghĩa bộ\"}], "
-                        "\"mnemonics\": \"mẹo nhớ ngắn gọn liên kết bộ thủ với nghĩa\"}]}]"
-                    )
+                    
+                    # Prompt chi tiết yêu cầu bóc tách bộ thủ và mẹo nhớ cho từng chữ cấu thành
+                    prompt_text = """
+                    Bạn là một chuyên gia Hán ngữ và chiết tự chữ Hán.
+                    Hãy nhận diện toàn bộ từ vựng (từ đơn hoặc từ ghép nhiều chữ Hán) có trong ảnh.
+                    Với mỗi từ, hãy nhận diện nghĩa cả từ, sau đó BẮT BUỘC bóc tách chi tiết cấu tạo từng chữ cấu thành:
+                    - Từng chữ gồm những bộ thủ / nét thành phần nào: ký hiệu bộ, tên Hán Việt của bộ, ý nghĩa biểu thị của bộ.
+                    - Mẹo ghi nhớ sinh động liên kết các bộ thủ với nghĩa của chữ đó.
 
-                    # Tự động thử lần lượt các model sẵn có, không cần người dùng chọn thủ công
+                    Hãy trả về DUY NHẤT một chuỗi JSON thuần (không có markdown ```json):
+                    [
+                      {
+                        "word": "学生",
+                        "word_pinyin": "xuéshēng",
+                        "word_sino_vietnamese": "Học Sinh",
+                        "word_meaning": "học sinh, học viên",
+                        "characters": [
+                          {
+                            "char": "学",
+                            "char_pinyin": "xué",
+                            "char_hanviet": "Học",
+                            "char_meaning": "học tập, bắt chước",
+                            "components": [
+                              {"symbol": "⺍", "name": "Bộ Hào biến thể (3 nét phẩy chấm)", "role": "Tia sáng tri thức, bắt chước"},
+                              {"symbol": "冖", "name": "Bộ Mịch", "role": "Mái che, lớp phủ"},
+                              {"symbol": "子", "name": "Bộ Tử", "role": "Đứa trẻ, con cái"}
+                            ],
+                            "mnemonics": "Đứa trẻ (子) ngồi dưới mái che (冖) tiếp thu những tia sáng tri thức (⺍) chính là việc HỌC (学)."
+                          },
+                          {
+                            "char": "生",
+                            "char_pinyin": "shēng",
+                            "char_hanviet": "Sinh",
+                            "char_meaning": "sinh ra, mầm sống, cuộc sống",
+                            "components": [
+                              {"symbol": "生", "name": "Bộ Sinh", "role": "Chính nó là một bộ thủ độc lập"},
+                              {"symbol": "屮", "name": "Bộ Triệt", "role": "Mầm cây cỏ mới nhú đâm lên mặt đất"}
+                            ],
+                            "mnemonics": "Mầm cây (屮) đâm chồi nhú lên khỏi mặt đất (一) biểu thị sự SINH sôi, nảy nở của mầm sống."
+                          }
+                        ]
+                      }
+                    ]
+                    """
+
                     models_to_try = [
                         "gemini-3.5-flash-lite",
                         "gemini-3.8-flash",
@@ -214,8 +245,49 @@ with tab_scan:
                             c_comps = c.get("components", [])
                             c_mnem = c.get("mnemonics", "")
 
-                            st.markdown(f"**Chữ `{c_char}`** (Pinyin: *{c_py}* | Hán Việt: *{c_hv}*): {c_mean}")
-                            comp_lines = []
-                            for comp in c_comps:
-                                if isinstance(comp, dict):
-                                    comp_lines.append(f"  * **{comp.get('symbol', '')}** ({comp.get('name', '')}): {comp.get('role', '')}")
+                            st.markdown(f"### 🈴 Chữ **`{c_char}`** (Pinyin: *{c_py}* | Hán Việt: *{c_hv}*): {c_mean}")
+                            
+                            st.markdown("**🧩 Bộ thủ cấu tạo:**")
+                            if isinstance(c_comps, list) and len(c_comps) > 0:
+                                for comp in c_comps:
+                                    if isinstance(comp, dict):
+                                        sym = comp.get("symbol", "")
+                                        cname = comp.get("name", "")
+                                        crole = comp.get("role", "")
+                                        st.markdown(f"- **{sym}** ({cname}): *{crole}*")
+                                    else:
+                                        st.markdown(f"- {comp}")
+                            else:
+                                st.markdown("- *Bộ thủ nguyên bản*")
+
+                            if c_mnem:
+                                st.info(f"💡 **Mẹo ghi nhớ chữ {c_char}:** {c_mnem}")
+                            st.divider()
+
+    elif not api_key:
+        st.info("Vui lòng dán API Key vào thanh bên trái để sử dụng.")
+
+with tab_vault:
+    df_saved = load_data()
+    st.subheader(f"Tổng số từ vựng đang lưu: {len(df_saved)}")
+
+    if not df_saved.empty:
+        col_search, col_clear = st.columns([3, 1])
+        with col_search:
+            search_kw = st.text_input("🔍 Tra cứu (chữ Hán, nghĩa tiếng Việt, Pinyin, Hán Việt):").strip().lower()
+        with col_clear:
+            st.write("")
+            st.write("")
+            if st.button("🗑️ Xóa toàn bộ sổ tay"):
+                if os.path.exists(DATA_FILE):
+                    os.remove(DATA_FILE)
+                st.success("Đã xóa sạch sổ tay!")
+                st.rerun()
+
+        if search_kw:
+            df_display = df_saved[
+                df_saved["word"].astype(str).str.contains(search_kw, case=False, na=False) |
+                df_saved["word_meaning"].astype(str).str.contains(search_kw, case=False, na=False) |
+                df_saved["word_pinyin"].astype(str).str.contains(search_kw, case=False, na=False) |
+                df_saved["word_sino_vietnamese"].astype(str).str.contains(search_kw, case=False, na=False) |
+                df_saved["characters_detail_json"].astype(str).str.contains(search_kw, case=False, na=False)
