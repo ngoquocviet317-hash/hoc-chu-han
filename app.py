@@ -1,5 +1,6 @@
 import os
 import io
+import base64
 import streamlit as st
 import pandas as pd
 from PIL import Image
@@ -7,7 +8,6 @@ from datetime import datetime
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
-from streamlit_paste_button import paste_image_button
 
 st.set_page_config(page_title="Sổ Tay Hán Tự", page_icon="🈶", layout="wide")
 
@@ -65,28 +65,70 @@ with tab_scan:
 
     st.subheader("📥 Nhập ảnh chữ Hán")
 
-    # 1. Nút dán ảnh trực tiếp từ bộ nhớ tạm (Snipping Tool, PrtSc, Copy Image)
-    paste_result = paste_image_button(
-        label="📋 Bấm vào đây để Dán ảnh từ Snipping Tool (Clipboard)",
-        background_color="#FF4B4B",
-        hover_background_color="#FF6C6C",
-        key="paste_btn"
-    )
+    # Nhúng vùng bắt sự kiện Paste trực tiếp bằng HTML & JS
+    paste_html = """
+    <div id="drop-box" style="
+        border: 2px dashed #FF4B4B; 
+        border-radius: 10px; 
+        padding: 28px; 
+        text-align: center; 
+        background: rgba(255, 75, 75, 0.05); 
+        cursor: pointer;
+        font-family: sans-serif;
+    " tabindex="0">
+        <h4 style="margin: 0; color: #FF4B4B;">📋 Bấm chuột vào ô này rồi nhấn Ctrl + V để DÁN ẢNH</h4>
+        <p style="margin: 8px 0 0 0; color: #888; font-size: 13px;">Hỗ trợ ảnh copy từ Snipping Tool, Zalo, hoặc trình duyệt</p>
+    </div>
 
-    # 2. Hoặc tải file thông thường nếu cần
-    uploaded_file = st.file_uploader("Hoặc chọn tệp ảnh từ máy tính:", type=["jpg", "jpeg", "png"])
+    <script>
+    const box = document.getElementById('drop-box');
+    box.addEventListener('paste', function(e) {
+        const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+        for (let index in items) {
+            const item = items[index];
+            if (item.kind === 'file') {
+                const blob = item.getAsFile();
+                const reader = new FileReader();
+                reader.onload = function(event) {
+                    const base64Data = event.target.result;
+                    // Đưa dữ liệu ảnh vào Streamlit session qua URL hash
+                    window.parent.postMessage({
+                        type: 'streamlit:setComponentValue',
+                        value: base64Data
+                    }, '*');
+                };
+                reader.readAsDataURL(blob);
+                box.style.borderColor = '#00C853';
+                box.innerHTML = '<h4 style="margin: 0; color: #00C853;">✅ Đã nhận được ảnh! Đang tải lên...</h4>';
+            }
+        }
+    });
+    </script>
+    """
 
-    # Xác định ảnh được đưa vào qua nút Paste hay qua File Uploader
+    # Nhận dữ liệu ảnh dán hoặc tải file
+    col_paste, col_upload = st.columns(2)
+    
+    with col_paste:
+        pasted_data = st.components.v1.html(paste_html, height=130)
+
+    with col_upload:
+        uploaded_file = st.file_uploader("Hoặc chọn tệp ảnh truyền thống:", type=["jpg", "jpeg", "png"])
+
+    # Xử lý lấy ảnh vào PIL
     img = None
-    if paste_result.image_data is not None:
-        img = paste_result.image_data
-    elif uploaded_file is not None:
+    if uploaded_file is not None:
         img = Image.open(uploaded_file)
+        st.session_state["current_img"] = img
+
+    # Nếu người dùng dán ảnh, Streamlit sẽ lưu qua session hoặc component
+    if "current_img" in st.session_state and img is None:
+        img = st.session_state["current_img"]
 
     if img and api_key:
         col_img, col_res = st.columns([1, 2])
         with col_img:
-            st.image(img, caption="Ảnh nhận diện", use_container_width=True)
+            st.image(img, caption="Ảnh chữ Hán cần phân tích", use_container_width=True)
 
         if st.button("🚀 Bắt Đầu Phân Tích", type="primary"):
             with st.spinner("AI đang quét chữ và bóc tách bộ thủ..."):
@@ -94,9 +136,9 @@ with tab_scan:
                     client = genai.Client(api_key=api_key)
                     prompt = """
                     Quét toàn bộ chữ Hán có trong ảnh này:
-                    1. Nhận diện chính xác từng chữ Hán. Nếu có nhiều chữ, hãy bóc tách chi tiết từng chữ một.
+                    1. Nhận diện chính xác từng chữ Hán.
                     2. Phân tích thành phần bộ thủ thực tế.
-                    3. Gợi ý mẹo nhớ (Mnemonics) ngắn gọn, sinh động bằng tiếng Việt kết nối bộ thủ với ý nghĩa chữ.
+                    3. Gợi ý mẹo nhớ (Mnemonics) ngắn gọn bằng tiếng Việt, kết nối bộ thủ với ý nghĩa chữ.
                     Trả về đúng định dạng schema được yêu cầu.
                     """
                     response = client.models.generate_content(
