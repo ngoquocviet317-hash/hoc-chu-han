@@ -1,4 +1,5 @@
 import os
+import io
 import streamlit as st
 import pandas as pd
 from PIL import Image
@@ -6,6 +7,7 @@ from datetime import datetime
 from google import genai
 from google.genai import types
 from pydantic import BaseModel, Field
+from streamlit_paste_button import paste_image_button
 
 st.set_page_config(page_title="Sổ Tay Hán Tự", page_icon="🈶", layout="wide")
 
@@ -61,28 +63,32 @@ with tab_scan:
     st.sidebar.header("Cài Đặt")
     api_key = st.sidebar.text_input("Dán Gemini API Key vào đây:", type="password")
 
-    # Khu vực dán và tải ảnh đa năng
-    st.markdown("### 📥 Tải lên hoặc Dán ảnh trực tiếp")
-    st.caption("💡 **Mẹo:** Bạn có thể chụp màn hình (hoặc bấm chuột phải copy ảnh từ Facebook, Zalo, Web) rồi nhấp vào khung dưới đây và ấn **Ctrl + V** (hoặc **Cmd + V** trên Mac) để dán trực tiếp!")
-    
-    # Hỗ trợ kéo thả, chọn file và dán từ clipboard
-    uploaded_file = st.file_uploader(
-        "Nhấp vào đây rồi ấn Ctrl+V để DÁN ảnh, hoặc kéo thả tệp ảnh vào đây:", 
-        type=["jpg", "jpeg", "png"],
-        key="image_input"
+    st.subheader("📥 Nhập ảnh chữ Hán")
+
+    # 1. Nút dán ảnh trực tiếp từ bộ nhớ tạm (Snipping Tool, PrtSc, Copy Image)
+    paste_result = paste_image_button(
+        label="📋 Bấm vào đây để Dán ảnh từ Snipping Tool (Clipboard)",
+        background_color="#FF4B4B",
+        hover_background_color="#FF6C6C",
+        key="paste_btn"
     )
 
-    if uploaded_file and api_key:
-        col_img, col_res = st.columns([1, 2])
-        try:
-            img = Image.open(uploaded_file)
-            with col_img:
-                st.image(img, caption="Ảnh vừa dán/tải lên", use_container_width=True)
-        except Exception as e:
-            st.error(f"Không thể đọc được ảnh. Vui lòng thử chụp hoặc copy lại ảnh khác! Chi tiết: {e}")
-            img = None
+    # 2. Hoặc tải file thông thường nếu cần
+    uploaded_file = st.file_uploader("Hoặc chọn tệp ảnh từ máy tính:", type=["jpg", "jpeg", "png"])
 
-        if img and st.button("🚀 Bắt Đầu Phân Tích", type="primary"):
+    # Xác định ảnh được đưa vào qua nút Paste hay qua File Uploader
+    img = None
+    if paste_result.image_data is not None:
+        img = paste_result.image_data
+    elif uploaded_file is not None:
+        img = Image.open(uploaded_file)
+
+    if img and api_key:
+        col_img, col_res = st.columns([1, 2])
+        with col_img:
+            st.image(img, caption="Ảnh nhận diện", use_container_width=True)
+
+        if st.button("🚀 Bắt Đầu Phân Tích", type="primary"):
             with st.spinner("AI đang quét chữ và bóc tách bộ thủ..."):
                 try:
                     client = genai.Client(api_key=api_key)
