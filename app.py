@@ -1,5 +1,6 @@
 import os
 import io
+import json
 import base64
 import streamlit as st
 import pandas as pd
@@ -7,15 +8,14 @@ from PIL import Image
 from datetime import datetime
 from google import genai
 from google.genai import types
-from pydantic import BaseModel, Field
 from st_img_pastebutton import paste
 
 st.set_page_config(page_title="Sổ Tay Hán Tự", page_icon="🈶", layout="wide")
 
 DATA_FILE = "hanzi_vault.csv"
 
-# --- HÀM TỰ ĐỘNG NÉN VÀ CO NHỎ ẢNH ĐỂ XỬ LÝ SIÊU TỐC ---
-def compress_and_resize_image(input_img: Image.Image, max_dim: int = 1200) -> Image.Image:
+def compress_and_resize_image(input_img: Image.Image, max_dim: int = 1000) -> bytes:
+    """Resize và nén ảnh thành chuỗi byte JPEG nhẹ để truyền siêu tốc."""
     if input_img.mode in ("RGBA", "P"):
         input_img = input_img.convert("RGB")
     width, height = input_img.size
@@ -26,9 +26,8 @@ def compress_and_resize_image(input_img: Image.Image, max_dim: int = 1200) -> Im
         input_img = input_img.resize((new_width, new_height), Image.Resampling.LANCZOS)
     
     buffer = io.BytesIO()
-    input_img.save(buffer, format="JPEG", quality=80, optimize=True)
-    buffer.seek(0)
-    return Image.open(buffer)
+    input_img.save(buffer, format="JPEG", quality=75, optimize=True)
+    return buffer.getvalue()
 
 def load_data():
     if os.path.exists(DATA_FILE):
@@ -45,17 +44,20 @@ def save_new_words(new_entries: list[dict]):
     now_str = datetime.now().strftime("%Y-%m-%d %H:%M")
     
     for item in new_entries:
-        if item["character"] not in existing_chars:
+        char = item.get("character", "").strip()
+        if char and char not in existing_chars:
+            comps = item.get("components", [])
+            comp_str = ", ".join(comps) if isinstance(comps, list) else str(comps)
             records_to_add.append({
-                "character": item["character"],
-                "pinyin": item["pinyin"],
-                "sino_vietnamese": item["sino_vietnamese"],
-                "meaning": item["meaning"],
-                "components": ", ".join(item["components"]) if isinstance(item["components"], list) else item["components"],
-                "mnemonics": item["mnemonics"],
+                "character": char,
+                "pinyin": item.get("pinyin", ""),
+                "sino_vietnamese": item.get("sino_vietnamese", ""),
+                "meaning": item.get("meaning", ""),
+                "components": comp_str,
+                "mnemonics": item.get("mnemonics", ""),
                 "created_at": now_str
             })
-            existing_chars.add(item["character"])
+            existing_chars.add(char)
 
     if records_to_add:
         updated_df = pd.concat([df, pd.DataFrame(records_to_add)], ignore_index=True)
@@ -63,27 +65,14 @@ def save_new_words(new_entries: list[dict]):
         return len(records_to_add)
     return 0
 
-class HanziDetail(BaseModel):
-    character: str = Field(description="Chữ Hán chuẩn")
-    pinyin: str = Field(description="Pinyin kèm dấu")
-    sino_vietnamese: str = Field(description="Âm Hán Việt")
-    meaning: str = Field(description="Nghĩa ngắn gọn")
-    components: list[str] = Field(description="Các bộ thủ cấu thành")
-    mnemonics: str = Field(description="Mẹo liên tưởng dễ nhớ")
-
-class OCRAnalysisResult(BaseModel):
-    words: list[HanziDetail]
-
 tab_scan, tab_vault = st.tabs(["⚡ Quét & Tách Chữ Nhanh", "📚 Sổ Tay Đã Lưu"])
 
 with tab_scan:
     st.sidebar.header("Cài Đặt")
     api_key = st.sidebar.text_input("Dán Gemini API Key vào đây:", type="password")
 
-    st.subheader("📥 Dán ảnh chữ Hán trực tiếp từ Snipping Tool")
-    st.caption("👉 Sau khi chụp bằng Snipping Tool (Win + Shift + S), bấm vào nút bên dưới:")
-
-    # Nút dán ảnh từ component st_img_pastebutton
+    st.subheader("📥 Nhập ảnh chữ Hán từ Snipping Tool")
+    
     paste_data = paste(
         label="📋 BẤM VÀO ĐÂY ĐỂ DÁN ẢNH TỪ CLIPBOARD",
         key="image_clipboard"
@@ -92,51 +81,73 @@ with tab_scan:
     raw_img = None
     if paste_data is not None:
         try:
-            # Giải mã dữ liệu ảnh gửi trực tiếp từ clipboard
             header, encoded = paste_data.split(",", 1)
             image_bytes = base64.b64decode(encoded)
             raw_img = Image.open(io.BytesIO(image_bytes))
         except Exception as err:
             st.error(f"Lỗi đọc ảnh từ clipboard: {err}")
 
-    # Ô dự phòng nếu muốn kéo thả file
-    with st.expander("Hoặc tải file ảnh từ máy (nếu cần)"):
+    with st.expander("Hoặc tải file ảnh từ máy"):
         uploaded_file = st.file_uploader("Chọn ảnh:", type=["jpg", "jpeg", "png", "webp"])
         if uploaded_file is not None:
             raw_img = Image.open(uploaded_file)
 
     if raw_img and api_key:
-        # Nén ảnh tức thì để gửi AI phản hồi trong 1-2 giây
-        img = compress_and_resize_image(raw_img)
+        img_bytes = compress_and_resize_image(raw_img)
 
         col_img, col_res = st.columns([1, 2])
         with col_img:
-            st.image(img, caption="Ảnh đã nhận diện thành công", use_container_width=True)
+            st.image(raw_img, caption="Ảnh chữ Hán cần phân tích", use_container_width=True)
 
         if st.button("🚀 Bắt Đầu Phân Tích", type="primary"):
-            with st.spinner("AI đang nhận diện và bóc tách cấu tạo..."):
+            with st.spinner("AI đang nhận diện siêu tốc..."):
                 try:
                     client = genai.Client(api_key=api_key)
+                    
                     prompt = """
-                    Quét toàn bộ chữ Hán có trong ảnh:
-                    1. Nhận diện chuẩn xác từng chữ Hán.
-                    2. Phân tích các bộ thủ tạo nên chữ.
-                    3. Gợi ý mẹo nhớ ngắn gọn bằng tiếng Việt liên kết giữa bộ thủ và ý nghĩa.
-                    Trả về đúng chuẩn schema.
+                    Quét toàn bộ chữ Hán có trong bức ảnh.
+                    Hãy trả về DUY NHẤT một mảng JSON (không bọc mã markdown thừa) theo cấu trúc sau:
+                    [
+                      {
+                        "character": "chữ Hán",
+                        "pinyin": "phiên âm pinyin",
+                        "sino_vietnamese": "âm Hán Việt",
+                        "meaning": "nghĩa tiếng Việt ngắn gọn",
+                        "components": ["bộ thủ 1", "bộ thủ 2"],
+                        "mnemonics": "mẹo nhớ ngắn gọn liên kết các bộ với nghĩa"
+                      }
+                    ]
                     """
+                    
+                    # Truyền byte trực tiếp để tránh timeout
                     response = client.models.generate_content(
                         model="gemini-3.8-flash",
-                        contents=[img, prompt],
+                        contents=[
+                            types.Part.from_bytes(data=img_bytes, mime_type="image/jpeg"),
+                            prompt
+                        ],
                         config=types.GenerateContentConfig(
                             response_mime_type="application/json",
-                            response_schema=OCRAnalysisResult,
                             temperature=0.1
                         )
                     )
-                    data = OCRAnalysisResult.model_validate_json(response.text)
-                    st.session_state["scanned_items"] = [item.model_dump() for item in data.words]
+                    
+                    clean_text = response.text.strip()
+                    if clean_text.startswith("```json"):
+                        clean_text = clean_text[7:]
+                    if clean_text.startswith("```"):
+                        clean_text = clean_text[3:]
+                    if clean_text.endswith("```"):
+                        clean_text = clean_text[:-3]
+                    
+                    parsed_data = json.loads(clean_text.strip())
+                    if isinstance(parsed_data, dict) and "words" in parsed_data:
+                        parsed_data = parsed_data["words"]
+                    
+                    st.session_state["scanned_items"] = parsed_data
+                    st.rerun()
                 except Exception as e:
-                    st.error(f"Lỗi: {e}")
+                    st.error(f"Lỗi xử lý: {e}")
 
         if "scanned_items" in st.session_state:
             items = st.session_state["scanned_items"]
@@ -147,9 +158,18 @@ with tab_scan:
                     st.success(f"Đã lưu thành công {added} chữ mới!")
 
                 for item in items:
-                    with st.expander(f"**{item['character']}** [{item['pinyin']}] — {item['sino_vietnamese']}: {item['meaning']}", expanded=True):
-                        st.markdown(f"**Bộ thủ:** {', '.join(item['components'])}")
-                        st.info(f"💡 **Mẹo nhớ:** {item['mnemonics']}")
+                    char = item.get("character", "")
+                    pinyin = item.get("pinyin", "")
+                    hanviet = item.get("sino_vietnamese", "")
+                    meaning = item.get("meaning", "")
+                    comps = item.get("components", [])
+                    comp_text = ", ".join(comps) if isinstance(comps, list) else str(comps)
+                    mnem = item.get("mnemonics", "")
+                    
+                    with st.expander(f"**{char}** [{pinyin}] — {hanviet}: {meaning}", expanded=True):
+                        st.markdown(f"**Bộ thủ:** {comp_text}")
+                        st.info(f"💡 **Mẹo nhớ:** {mnem}")
+
     elif not api_key:
         st.info("Vui lòng dán API Key vào thanh bên trái để sử dụng.")
 
